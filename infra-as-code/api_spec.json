@@ -1,0 +1,25 @@
+{
+  "info": {
+    "title": "main",
+    "version": "v1"
+  },
+  "openapi": "3.0.1",
+  "paths": {
+    "/trigger": {
+      "post": {
+        "operationId": "triggerpost",
+        "responses": {
+          "default": {
+            "description": ""
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "payloadFormatVersion": "2.0",
+          "type": "aws_proxy",
+          "uri": "${trigger_uri}"
+        }
+      }
+    }
+  }
+}

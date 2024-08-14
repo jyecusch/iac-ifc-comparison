@@ -1,0 +1,5 @@
+# Ignore any test files
+*_test.go
+
+# Ignore any binary files
+bin/
