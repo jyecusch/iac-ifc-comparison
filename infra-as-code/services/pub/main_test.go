@@ -8,33 +8,34 @@ import (
 	"testing"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/aws/aws-sdk-go-v2/service/sns"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-// MockSnsClient is a mock implementation of the SnsClient interface
-type MockSnsClient struct {
+// MockEventBridgeClient is a mock implementation of the EventBridgeClient interface
+type MockEventBridgeClient struct {
 	mock.Mock
 }
 
-func (m *MockSnsClient) Publish(ctx context.Context, params *sns.PublishInput, optFns ...func(*sns.Options)) (*sns.PublishOutput, error) {
+func (m *MockEventBridgeClient) PutEvents(ctx context.Context, params *eventbridge.PutEventsInput, optFns ...func(*eventbridge.Options)) (*eventbridge.PutEventsOutput, error) {
 	args := m.Called(ctx, params, optFns)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*sns.PublishOutput), args.Error(1)
+	return args.Get(0).(*eventbridge.PutEventsOutput), args.Error(1)
 }
 
 func TestHandleRequestSuccess(t *testing.T) {
 	// Set up environment variables
-	os.Setenv("SNS_TOPIC_ARN", "arn:aws:sns:us-west-2:123456789012:MyTopic")
+	os.Setenv("EVENT_BUS_NAME", "testbus")
+	os.Setenv("EVENT_SOURCE_ID", "testsource")
 
-	mockSnsClient := new(MockSnsClient)
-	mockSnsClient.On("Publish", mock.Anything, mock.AnythingOfType("*sns.PublishInput"), mock.Anything).Return(&sns.PublishOutput{}, nil)
+	mockEventBridgeClient := new(MockEventBridgeClient)
+	mockEventBridgeClient.On("PutEvents", mock.Anything, mock.AnythingOfType("*eventbridge.PutEventsInput"), mock.Anything).Return(&eventbridge.PutEventsOutput{}, nil)
 
 	handler := &ApiHandler{
-		snsClient: mockSnsClient,
+		eventbridgeClient: mockEventBridgeClient,
 	}
 
 	request := events.APIGatewayProxyRequest{
@@ -48,18 +49,19 @@ func TestHandleRequestSuccess(t *testing.T) {
 	assert.Equal(t, "Message published", response.Body)
 	assert.Equal(t, "text/plain; charset=utf-8", response.Headers["Content-Type"])
 
-	mockSnsClient.AssertExpectations(t)
+	mockEventBridgeClient.AssertExpectations(t)
 }
 
 func TestHandleRequestError(t *testing.T) {
 	// Set up environment variables
-	os.Setenv("SNS_TOPIC_ARN", "arn:aws:sns:us-west-2:123456789012:MyTopic")
+	os.Setenv("EVENT_BUS_NAME", "testbus")
+	os.Setenv("EVENT_SOURCE_ID", "testsource")
 
-	mockSnsClient := new(MockSnsClient)
-	mockSnsClient.On("Publish", mock.Anything, mock.AnythingOfType("*sns.PublishInput"), mock.Anything).Return(nil, errors.New("failed to publish message"))
+	mockEventBridgeClient := new(MockEventBridgeClient)
+	mockEventBridgeClient.On("PutEvents", mock.Anything, mock.AnythingOfType("*eventbridge.PutEventsInput"), mock.Anything).Return(nil, errors.New("failed to publish message"))
 
 	handler := &ApiHandler{
-		snsClient: mockSnsClient,
+		eventbridgeClient: mockEventBridgeClient,
 	}
 
 	request := events.APIGatewayProxyRequest{
@@ -72,17 +74,18 @@ func TestHandleRequestError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, response.StatusCode)
 	assert.Equal(t, "Failed to publish message", response.Body)
 
-	mockSnsClient.AssertExpectations(t)
+	mockEventBridgeClient.AssertExpectations(t)
 }
 
 func TestHandleRequestMissingTopicArn(t *testing.T) {
 	// Clear environment variables
-	os.Unsetenv("SNS_TOPIC_ARN")
+	os.Unsetenv("EVENT_BUS_NAME")
+	os.Unsetenv("EVENT_SOURCE_ID")
 
-	mockSnsClient := new(MockSnsClient)
+	mockEventBridgeClient := new(MockEventBridgeClient)
 
 	handler := &ApiHandler{
-		snsClient: mockSnsClient,
+		eventbridgeClient: mockEventBridgeClient,
 	}
 
 	request := events.APIGatewayProxyRequest{
@@ -95,12 +98,13 @@ func TestHandleRequestMissingTopicArn(t *testing.T) {
 
 func TestNewHandlerSuccess(t *testing.T) {
 	os.Setenv("AWS_REGION", "us-west-2")
-	os.Setenv("SNS_TOPIC_ARN", "arn:aws:sns:us-west-2:123456789012:MyTopic")
+	os.Setenv("EVENT_BUS_NAME", "testbus")
+	os.Setenv("EVENT_SOURCE_ID", "testsource")
 
 	handler, err := NewHandler()
 	assert.NoError(t, err)
 	assert.NotNil(t, handler)
-	assert.NotNil(t, handler.snsClient)
+	assert.NotNil(t, handler.eventbridgeClient)
 }
 
 func TestNewHandlerMissingRegion(t *testing.T) {

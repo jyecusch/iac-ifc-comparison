@@ -12,7 +12,8 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/sns"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge/types"
 )
 
 type ApiResponse struct {
@@ -21,24 +22,35 @@ type ApiResponse struct {
 }
 
 type ApiHandler struct {
-	snsClient SnsClient
+	eventbridgeClient EventBridgeClient
 }
 
 // handleRequest is the Lambda function handler
 func (a *ApiHandler) handleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	// The code can't easily communicate that it needs these environment variables set.
 	// It relies on the Terraform developer knowing these requirements and manually implementing them.
-	topicArn := os.Getenv("SNS_TOPIC_ARN")
+	eventBusName := os.Getenv("EVENT_BUS_NAME")
+	eventSourceId := os.Getenv("EVENT_SOURCE_ID")
 
 	// Build time misconfigurations are tricky to detect - so the code must check the value at runtime.
-	if topicArn == "" {
+	if eventBusName == "" {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-			Body:       "SNS_TOPIC_ARN environment variable is not set",
+			Body:       "EVENT_BUS_NAME environment variable is not set",
 			Headers: map[string]string{
 				"Content-Type": "text/plain; charset=utf-8",
 			},
-		}, fmt.Errorf("SNS_TOPIC_ARN environment variable is not set")
+		}, fmt.Errorf("EVENT_BUS_NAME environment variable is not set")
+	}
+
+	if eventSourceId == "" {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       "EVENT_SOURCE_ID environment variable is not set",
+			Headers: map[string]string{
+				"Content-Type": "text/plain; charset=utf-8",
+			},
+		}, fmt.Errorf("EVENT_SOURCE_ID environment variable is not set")
 	}
 
 	message := map[string]interface{}{
@@ -47,15 +59,21 @@ func (a *ApiHandler) handleRequest(ctx context.Context, request events.APIGatewa
 
 	messageBytes, _ := json.Marshal(message)
 
-	publishInput := &sns.PublishInput{
-		TopicArn: aws.String(topicArn),
-		Message:  aws.String(string(messageBytes)),
+	eventInput := &eventbridge.PutEventsInput{
+		Entries: []types.PutEventsRequestEntry{
+			{
+				Source:       aws.String(eventSourceId),
+				Detail:       aws.String(string(messageBytes)),
+				DetailType:   aws.String("customDetailType"),
+				EventBusName: aws.String(eventBusName),
+			},
+		},
 	}
 
 	// The code has no idea whether this operation is permitted or not.
 	// If the IAM configuration in the Terraform code is incorrect, the operation will fail.
 	// Misconfigured IAM is difficult detect before deploying and running the code.
-	_, err := a.snsClient.Publish(ctx, publishInput)
+	_, err := a.eventbridgeClient.PutEvents(ctx, eventInput)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
@@ -87,16 +105,16 @@ func NewHandler() (*ApiHandler, error) {
 		return nil, fmt.Errorf("error creating new AWS session %w", sessionError)
 	}
 
-	snsClient := sns.NewFromConfig(cfg)
+	eventbridgeClient := eventbridge.NewFromConfig(cfg)
 
 	return &ApiHandler{
-		snsClient: snsClient,
+		eventbridgeClient: eventbridgeClient,
 	}, nil
 }
 
 // Enables mocking of the SNS client for unit tests
-type SnsClient interface {
-	Publish(ctx context.Context, params *sns.PublishInput, optFns ...func(*sns.Options)) (*sns.PublishOutput, error)
+type EventBridgeClient interface {
+	PutEvents(ctx context.Context, params *eventbridge.PutEventsInput, optFns ...func(*eventbridge.Options)) (*eventbridge.PutEventsOutput, error)
 }
 
 func main() {

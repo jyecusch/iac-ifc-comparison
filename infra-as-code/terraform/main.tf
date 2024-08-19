@@ -31,9 +31,14 @@ module "subscriber" {
   environment  = {}
 }
 
-module "topic" {
-  source     = "./modules/sns-pubsub"
-  topic_name = "iac-topic"
+locals {
+  bus_source_id = "custom.source"
+}
+
+module "event_bus" {
+  source    = "./modules/eventbridge-pubsub"
+  bus_name  = "iac-bus"
+  source_id = local.bus_source_id
   lambda_subscribers = {
     subfunc = module.subscriber.function_arn
   }
@@ -44,24 +49,25 @@ module "publisher" {
   service_name = "iac-publisher"
   image        = "publisher:latest"
   environment = {
-    # If this env var name doesn't exactly match the expected env var name in the publisher code
-    #   the publisher will not be able to publish to the SNS topic
-    SNS_TOPIC_ARN = module.topic.topic_arn
+    # If these env var names don't exactly match the expected env var name in the publisher code
+    #   the publisher will not be able to publish to the EventBridge bus.
+    EVENT_BUS_NAME  = module.event_bus.bus_name
+    EVENT_SOURCE_ID = local.bus_source_id
   }
 }
 
 resource "aws_iam_role_policy" "policy" {
   # The Terraform code has no idea if the Lambda function still needs these permissions.
   #   It's up to the Terraform developer to have a detailed understanding of the code's requirements,
-  #   then ensure they're reflected accurately in this deployment code.
+  #   then ensure they're reflected accurately in this deployment code,
   #   including removing these permissions if they are no longer needed.
   role = module.publisher.role_name
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = {
       Effect   = "Allow"
-      Action   = "sns:Publish"
-      Resource = module.topic.topic_arn
+      Action   = "events:PutEvents"
+      Resource = module.event_bus.bus_arn
     }
   })
 }

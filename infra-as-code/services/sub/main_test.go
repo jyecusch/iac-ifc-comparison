@@ -9,16 +9,11 @@ import (
 )
 
 func TestHandleRequest(t *testing.T) {
-	// Create a mock SNS event
-	event := events.SNSEvent{
-		Records: []events.SNSEventRecord{
-			{
-				SNS: events.SNSEntity{
-					Message:   "This is a test SNS message",
-					MessageID: "12345",
-				},
-			},
-		},
+
+	// Create a mock EventBridge (CloudWatch) event
+	event := events.CloudWatchEvent{
+		ID:     "1234",
+		Detail: []byte(`{"data": "test message"}`),
 	}
 
 	// Call the handler function

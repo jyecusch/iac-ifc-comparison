@@ -8,11 +8,8 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-func handleRequest(ctx context.Context, event events.SNSEvent) error {
-	for _, record := range event.Records {
-		snsRecord := record.SNS
-		log.Printf("Received SNS message [ID: %s]: %s", snsRecord.MessageID, snsRecord.Message)
-	}
+func handleRequest(ctx context.Context, event events.CloudWatchEvent) error {
+	log.Printf("Received message [ID: %s]: %s", event.ID, string(event.Detail))
 
 	return nil
 }
